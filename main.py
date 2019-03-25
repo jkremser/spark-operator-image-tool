@@ -1,6 +1,12 @@
 import click
-import logging
+import logging, coloredlogs
+# import daiquiri
 from conu import DockerRunBuilder, DockerBackend
+
+# daiquiri.setup(level=logging.INFO)
+coloredlogs.install(level='DEBUG')
+
+
 
 #python3 main.py --image quay.io/jkremser/openshift-spark --tag 2.4.0
 

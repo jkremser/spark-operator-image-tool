@@ -1,2 +1,3 @@
 conu
 click
+coloredlogs
