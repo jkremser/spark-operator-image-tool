@@ -102,11 +102,9 @@ def print_result(results):
     if all_ok:
         print("Radley approves!")
         import os
-        os.system("echo -e \"$(<radley.ascii)\" \\\\n")
         f = open(os.path.join(os.path.dirname(__file__), 'radley.ascii'), 'r')
         for line in f:
             print(line, end='')
-        #os.system("img2txt.py ~/.Downloads/radley.png --ansi --targetAspect=0.4 --bgcolor=#ffffff --antialias --maxLen=80")
     else:
         print("\nThe image is not spark-operator compatible 👎")
 
