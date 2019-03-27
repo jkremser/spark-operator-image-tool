@@ -4,8 +4,8 @@ python:
   - "3.7"
 
 install: 
-  - pip3 install --user -r requirements.txt
-  - pip3 install --user --upgrade .
+  - pip3 install -r requirements.txt
+  - pip3 install --upgrade .
 
 script:
   - soit --image quay.io/jkremser/openshift-spark --tag 2.4.0
