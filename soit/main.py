@@ -7,13 +7,8 @@ import os
 
 coloredlogs.install(level='DEBUG')
 
-
-
-#python3 main.py --image quay.io/jkremser/openshift-spark --tag 2.4.0
-
-# image = 'quay.io/jkremser/openshift-spark'
-# tag = '2.4.0'
-# backend = DockerBackend(logging_level=logging.DEBUG)
+# usage:
+#python3 soit/main.py --image quay.io/jkremser/openshift-spark --tag 2.4.0
 
 @click.command()
 @click.option('--image', '-i', prompt='container image', help='Container image with Spark.')
@@ -36,13 +31,11 @@ def check(image, tag, verbose, full):
             print('Ubable to pull image: %s:%s' % (image, tag))
             exit(1)
 
-        # the command to run in a container
         run_params = DockerRunBuilder(additional_opts=['--entrypoint', ''], command=['sleep', '3600'])
         container = i.run_via_binary(run_params)
 
         assert container.is_running(), "Container must be running"
         try:
-            # we can also access it directly on disk and compare
             with container.mount() as fs:
                 if os.path.lexists(fs.p('/opt/spark')):
                     resolved_spark_home = os.readlink(fs.p('/opt/spark'))
@@ -89,19 +82,7 @@ def check(image, tag, verbose, full):
 
                 bash_output = container.execute(["bash", "-c", "echo Spark rocks!"], blocking=False)
                 bash_output = 'Spark rocks!' in (b'\n'.join(bash_output)).decode("utf-8")
-                results["bash_output"] = {"result": bash_output, "message": "The image should have the bash installed"}
-
-                # entrypoint_present = container.
-
-                # todo:
-                # print entrypoint
-                # print command
-                # print env
-                # print labels
-                # assert 'spark.ui.reverseProxy' in fs.read_file('/opt/spark/conf/spark-defaults.conf')
-                # print("done.")
-                # todo: container.http_request(7077..)
-            
+                results["bash_output"] = {"result": bash_output, "message": "The image should have the bash installed"}            
         finally:
             container.kill()
             container.delete()
@@ -161,6 +142,7 @@ def print_result(results):
             print(line, end='')
     else:
         print("\nThe image is not spark-operator compatible 👎")
+        exit(1)
 
     print("\n%s" % colored("RESULTS:", "yellow"))
     for key in results:
