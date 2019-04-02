@@ -4,6 +4,7 @@ from conu import DockerRunBuilder, DockerBackend, ConuException
 from termcolor import colored
 
 import os
+import sys
 
 coloredlogs.install(level='DEBUG')
 
@@ -15,11 +16,17 @@ coloredlogs.install(level='DEBUG')
 @click.option('--tag', '-t', prompt='tag', default='latest', help='Specific tag of the image.')
 @click.option('--verbose', '-v', is_flag=True, help='Verbose output.')
 @click.option('--full', '-f', is_flag=True, help='Full mode including spawning master and worker and testing if they can connect.')
-def check(image, tag, verbose, full):
+@click.option('--silent', '-s', is_flag=True, help='Do not output anything to standard output.')
+def check(image, tag, verbose, full, silent):
     """Simple verification tool that check the compatibility with Spark Operator"""
+
     logging_level = logging.DEBUG if verbose else logging.ERROR
     logging.getLogger("urllib3").setLevel(logging_level)
     logging.getLogger("docker").setLevel(logging_level)
+
+    if silent:
+        sys.stdout = open(os.devnull, 'w')
+        sys.stderr = open(os.devnull, 'w')
 
     with DockerBackend(logging_level=logging_level) as backend:
         results = {}
