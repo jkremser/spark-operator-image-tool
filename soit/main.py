@@ -1,6 +1,6 @@
 import click
 import logging, coloredlogs
-from conu import DockerRunBuilder, DockerBackend
+from conu import DockerRunBuilder, DockerBackend, ConuException
 from termcolor import colored
 
 import os
@@ -19,7 +19,8 @@ coloredlogs.install(level='DEBUG')
 @click.option('--image', '-i', prompt='container image', help='Container image with Spark.')
 @click.option('--tag', '-t', prompt='tag', default='latest', help='Specific tag of the image.')
 @click.option('--verbose', '-v', is_flag=True, help='Verbose output.')
-def check(image, tag, verbose):
+@click.option('--full', '-f', is_flag=True, help='Full mode including spawning master and worker and testing if they can connect.')
+def check(image, tag, verbose, full):
     """Simple verification tool that check the compatibility with Spark Operator"""
     logging_level = logging.DEBUG if verbose else logging.ERROR
     logging.getLogger("urllib3").setLevel(logging_level)
@@ -29,7 +30,11 @@ def check(image, tag, verbose):
         results = {}
 
         # the image will be pulled if it's not present
-        i = backend.ImageClass(image, tag=tag)
+        try:
+            i = backend.ImageClass(image, tag=tag)
+        except ConuException:
+            print('Ubable to pull image: %s:%s' % (image, tag))
+            exit(1)
 
         # the command to run in a container
         run_params = DockerRunBuilder(additional_opts=['--entrypoint', ''], command=['sleep', '3600'])
@@ -68,6 +73,8 @@ def check(image, tag, verbose):
                     default_config_present = config_directory_present and fs.file_is_present(resolved_spark_home + '/conf/spark-defaults.conf')
                     spark_class_present = fs.file_is_present(resolved_spark_home + '/bin/spark-class')
                     release_file_present = fs.file_is_present(resolved_spark_home + '/RELEASE')
+                    if release_file_present:
+                        release = fs.read_file(resolved_spark_home + '/RELEASE') + "\n"
                 else:
                     config_directory_present = default_config_present = spark_class_present = release_file_present = False
 
@@ -76,12 +83,15 @@ def check(image, tag, verbose):
                 results["spark_class_present"] = {"result": spark_class_present, "message": "File /opt/spark/bin/spark-class should be present on the image"}
                 results["release_file_present"] = {"result": release_file_present, "message": "File /opt/spark/RELEASE should be present on the image"}
 
+                curl_output = container.execute(["curl", "--help"], blocking=False)
+                curl_installed = 'Usage: curl' in (b'\n'.join(curl_output)).decode("utf-8")
+                results["curl_installed"] = {"result": curl_installed, "message": "The image should have the curl installed"}
 
-                print_result(results)
+                bash_output = container.execute(["bash", "-c", "echo Spark rocks!"], blocking=False)
+                bash_output = 'Spark rocks!' in (b'\n'.join(bash_output)).decode("utf-8")
+                results["bash_output"] = {"result": bash_output, "message": "The image should have the bash installed"}
 
-                if release_file_present:
-                    print(colored("\n\nApache Spark info:", "yellow"))
-                    print(fs.read_file(resolved_spark_home + '/RELEASE'))
+                # entrypoint_present = container.
 
                 # todo:
                 # print entrypoint
@@ -96,8 +106,52 @@ def check(image, tag, verbose):
             container.kill()
             container.delete()
 
+        if full:
+            e2e_case(i, results)
+
+        print_result(results)
+
+        if release_file_present:
+            print(colored("Apache Spark info:", "yellow"))
+            print(release)
+
+def e2e_case(i, results):
+    # run master
+    master = i.run_via_binary()
+    master_started = master.is_running()
+    results["master_started"] = {"result": master_started, "message": "It should be possible to start the master."}
+
+    master.wait_for_port(8080, timeout=15)
+    http_response = master.http_request(path="/json", port=8080)
+    master_http_ok = http_response.ok
+    results["master_http_ok"] = {"result": master_http_ok, "message": "Master should start the web ui on port 8080"}
+
+    master_alive = 'ALIVE' in http_response.content.decode("utf-8")
+    results["master_alive"] = {"result": master_alive, "message": "Master should be alive."}
+
+    if master_started and master.get_IPv4s():
+        master_ip = master.get_IPv4s()[0]
+        # run worker
+        run_params_worker = DockerRunBuilder(additional_opts=['-e', 'SPARK_MASTER_ADDRESS=' + master_ip + ':7077', '-e', 'SPARK_MASTER_UI_ADDRESS=http://' + master_ip + ':8080'])
+        worker = i.run_via_binary(run_params_worker)
+        worker_started = worker.is_running()
+        results["worker_started"] = {"result": worker_started, "message": "It should be possible to start the worker."}
+        worker.wait_for_port(8081, timeout=15)
+
+        http_response = worker.http_request(path="/json", port=8081)
+        worker_http_ok = http_response.ok
+        results["worker_http_ok"] = {"result": worker_http_ok, "message": "Worker should start the web ui on port 8081"}
+
+        worker_registered_web_ui = 'spark://%s:7077' % master_ip in http_response.content.decode("utf-8")
+        results["worker_registered_web_ui"] = {"result": worker_registered_web_ui, "message": "Worker web ui should contain the master's ip"}
+
+        worker_registered_logs = 'Registering worker' in (b'\n'.join(master.logs())).decode("utf-8")
+        results["worker_registered_logs"] = {"result": worker_registered_logs, "message": "In the master's log file there should be worker registration message"}
+
+        master_registered_logs = 'registered with master' in (b'\n'.join(worker.logs())).decode("utf-8")
+        results["master_registered_logs"] = {"result": master_registered_logs, "message": "In the worker's log file master registration should be mentioned"}
+
 def print_result(results):
-    print("\n")
     all_ok = all(map(lambda r: r["result"], results.values()))
     if all_ok:
         print("Radley approves!")
