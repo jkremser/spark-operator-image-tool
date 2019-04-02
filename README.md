@@ -16,3 +16,11 @@ pip3 install soit --user
 ```
 soit --image quay.io/jkremser/openshift-spark --tag 2.4.0
 ```
+
+#### Demo
+
+<!--
+asciinema rec -i 3
+docker run -\-rm -v $PWD:/data asciinema/asciicast2gif -s 1.18 -S 3 -h 62 -t monokai 189204.cast demo.gif
+-->
+[![Watch the full asciicast](https://github.com/Jiri-Kremser/spark-operator-image-tool/raw/master/ascii.gif)](https://asciinema.org/a/238399?&cols=123&rows=63)
