@@ -8,6 +8,8 @@ import sys
 
 coloredlogs.install(level='DEBUG')
 
+results = []
+
 # usage:
 #python3 soit/main.py --image quay.io/jkremser/openshift-spark --tag 2.4.0
 
@@ -25,11 +27,12 @@ def check(image, tag, verbose, full, silent):
     logging.getLogger("docker").setLevel(logging_level)
 
     if silent:
+        # shhh!
         sys.stdout = open(os.devnull, 'w')
         sys.stderr = open(os.devnull, 'w')
 
     with DockerBackend(logging_level=logging_level) as backend:
-        results = {}
+        
 
         # the image will be pulled if it's not present
         try:
@@ -50,7 +53,7 @@ def check(image, tag, verbose, full, silent):
                     resolved_spark_home = '/opt/spark'
 
                 launch_script_is_present = fs.file_is_present('/launch.sh') or fs.file_is_present(resolved_spark_home + '/bin/launch.sh')
-                results["launch_script_is_present"] = {"result": launch_script_is_present, "message": "File /launch.sh should be present on the image"}
+                add_result(launch_script_is_present, "File /launch.sh should be present on the image")
 
                 if launch_script_is_present:
                     launch_script = fs.read_file('/launch.sh') if fs.file_is_present('/launch.sh') else fs.read_file(resolved_spark_home + '/bin/launch.sh')
@@ -59,14 +62,14 @@ def check(image, tag, verbose, full, silent):
                 else:
                     metrics_support = master_address_support = False
 
-                results["metrics_support"] = {"result": metrics_support, "message": "File /launch.sh does contain SPARK_METRICS_ON"}
-                results["master_address_support"] = {"result": master_address_support, "message": "File /launch.sh does contain SPARK_MASTER_ADDRESS"}
+                add_result(metrics_support, "File /launch.sh does contain SPARK_METRICS_ON")
+                add_result(master_address_support, "File /launch.sh does contain SPARK_MASTER_ADDRESS")
 
                 entrypoint_present = fs.file_is_present('/entrypoint')
-                results["entrypoint_present"] = {"result": entrypoint_present, "message": "File /entrypoint should be present on the image"}
+                add_result(entrypoint_present, "File /entrypoint should be present on the image")
 
                 spark_home_present = fs.directory_is_present(resolved_spark_home)
-                results["spark_home_present"] = {"result": spark_home_present, "message": "Directory /opt/spark should be present on the image"}
+                add_result(spark_home_present, "Directory /opt/spark should be present on the image")
 
                 if spark_home_present:
                     config_directory_present = fs.directory_is_present(resolved_spark_home + '/conf')
@@ -78,18 +81,18 @@ def check(image, tag, verbose, full, silent):
                 else:
                     config_directory_present = default_config_present = spark_class_present = release_file_present = False
 
-                results["config_directory_present"] = {"result": config_directory_present, "message": "Directory /opt/spark/conf/ is present on the image"}
-                results["default_config_present"] = {"result": default_config_present, "message": "Default config spark-defaults.conf is on the right place"}
-                results["spark_class_present"] = {"result": spark_class_present, "message": "File /opt/spark/bin/spark-class should be present on the image"}
-                results["release_file_present"] = {"result": release_file_present, "message": "File /opt/spark/RELEASE should be present on the image"}
+                add_result(config_directory_present, "Directory /opt/spark/conf/ is present on the image")
+                add_result(default_config_present, "Default config spark-defaults.conf is on the right place")
+                add_result(spark_class_present, "File /opt/spark/bin/spark-class should be present on the image")
+                add_result(release_file_present, "File /opt/spark/RELEASE should be present on the image")
 
                 curl_output = container.execute(["curl", "--help"], blocking=False)
                 curl_installed = 'Usage: curl' in (b'\n'.join(curl_output)).decode("utf-8")
-                results["curl_installed"] = {"result": curl_installed, "message": "The image should have the curl installed"}
+                add_result(curl_installed, "The image should have the curl installed")
 
                 bash_output = container.execute(["bash", "-c", "echo Spark rocks!"], blocking=False)
-                bash_output = 'Spark rocks!' in (b'\n'.join(bash_output)).decode("utf-8")
-                results["bash_output"] = {"result": bash_output, "message": "The image should have the bash installed"}            
+                bash_installed = 'Spark rocks!' in (b'\n'.join(bash_output)).decode("utf-8")
+                add_result(bash_installed, "The image should have the bash installed")
         finally:
             container.kill()
             container.delete()
@@ -107,15 +110,15 @@ def e2e_case(i, results):
     # run master
     master = i.run_via_binary()
     master_started = master.is_running()
-    results["master_started"] = {"result": master_started, "message": "It should be possible to start the master."}
+    add_result(master_started, "It should be possible to start the master.")
 
     master.wait_for_port(8080, timeout=15)
     http_response = master.http_request(path="/json", port=8080)
     master_http_ok = http_response.ok
-    results["master_http_ok"] = {"result": master_http_ok, "message": "Master should start the web ui on port 8080"}
+    add_result(master_http_ok, "Master should start the web ui on port 8080")
 
     master_alive = 'ALIVE' in http_response.content.decode("utf-8")
-    results["master_alive"] = {"result": master_alive, "message": "Master should be alive."}
+    add_result(master_alive, "Master should be alive.")
 
     if master_started and master.get_IPv4s():
         master_ip = master.get_IPv4s()[0]
@@ -123,24 +126,28 @@ def e2e_case(i, results):
         run_params_worker = DockerRunBuilder(additional_opts=['-e', 'SPARK_MASTER_ADDRESS=' + master_ip + ':7077', '-e', 'SPARK_MASTER_UI_ADDRESS=http://' + master_ip + ':8080'])
         worker = i.run_via_binary(run_params_worker)
         worker_started = worker.is_running()
-        results["worker_started"] = {"result": worker_started, "message": "It should be possible to start the worker."}
+        add_result(worker_started, "It should be possible to start the worker.")
         worker.wait_for_port(8081, timeout=15)
 
         http_response = worker.http_request(path="/json", port=8081)
         worker_http_ok = http_response.ok
-        results["worker_http_ok"] = {"result": worker_http_ok, "message": "Worker should start the web ui on port 8081"}
+        add_result(worker_http_ok, "Worker should start the web ui on port 8081")
 
         worker_registered_web_ui = 'spark://%s:7077' % master_ip in http_response.content.decode("utf-8")
-        results["worker_registered_web_ui"] = {"result": worker_registered_web_ui, "message": "Worker web ui should contain the master's ip"}
+        add_result(worker_registered_web_ui, "Worker web ui should contain the master's ip")
 
         worker_registered_logs = 'Registering worker' in (b'\n'.join(master.logs())).decode("utf-8")
-        results["worker_registered_logs"] = {"result": worker_registered_logs, "message": "In the master's log file there should be worker registration message"}
+        add_result(worker_registered_logs, "In the master's log file there should be worker registration message")
 
         master_registered_logs = 'registered with master' in (b'\n'.join(worker.logs())).decode("utf-8")
-        results["master_registered_logs"] = {"result": master_registered_logs, "message": "In the worker's log file master registration should be mentioned"}
+        add_result(master_registered_logs, "In the worker's log file master registration should be mentioned")
+
+
+def add_result(result, message):
+        results.append({"result": result, "message": message})
 
 def print_result(results):
-    all_ok = all(map(lambda r: r["result"], results.values()))
+    all_ok = all(map(lambda r: r["result"], results))
     if all_ok:
         print("Radley approves!")
         import os
@@ -152,8 +159,8 @@ def print_result(results):
         exit(1)
 
     print("\n%s" % colored("RESULTS:", "yellow"))
-    for key in results:
-        print("[ %s ] ... %s" % (colored("✓", "green") if results[key]["result"] else colored("✕", "red"), results[key]["message"]))
+    for result in results:
+        print("[ %s ] ... %s" % (colored("✓", "green") if result["result"] else colored("✕", "red"), result["message"]))
     print("\n")
 
 if __name__ == '__main__':
