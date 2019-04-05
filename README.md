@@ -27,5 +27,19 @@ docker run -\-rm -v $PWD:/data asciinema/asciicast2gif -s 1.18 -S 3 -h 62 -t mon
 -->
 [![Watch the full asciicast](https://github.com/Jiri-Kremser/spark-operator-image-tool/raw/master/ascii.gif)](https://asciinema.org/a/238399?&cols=123&rows=63)
 
+#### Local Development
+
+Install the modules:
+
+```
+pip3 install -r requirements.txt --user
+```
+
+Run the app:
+
+```
+python3 soit/main.py
+```
+
 #### Other
 This tool is based on a library for interactive testing of container images called [conu](https://github.com/user-cont/conu).
