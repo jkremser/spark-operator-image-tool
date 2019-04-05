@@ -2,3 +2,4 @@ conu
 click
 coloredlogs
 termcolor
+tqdm

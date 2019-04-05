@@ -2,13 +2,14 @@ import click
 import logging, coloredlogs
 from conu import DockerRunBuilder, DockerBackend, ConuException
 from termcolor import colored
+from tqdm import tqdm
 
 import os
 import sys
 
 coloredlogs.install(level='DEBUG')
-
 results = []
+pbar = None
 
 # usage:
 #python3 soit/main.py --image quay.io/jkremser/openshift-spark --tag 2.4.0
@@ -32,14 +33,16 @@ def check(image, tag, verbose, full, silent):
         sys.stderr = open(os.devnull, 'w')
 
     with DockerBackend(logging_level=logging_level) as backend:
-        
-
         # the image will be pulled if it's not present
         try:
             i = backend.ImageClass(image, tag=tag)
         except ConuException:
             print('Ubable to pull image: %s:%s' % (image, tag))
             exit(1)
+
+        if full:
+            global pbar
+            pbar = tqdm(total=19, unit="checks", initial=1)
 
         run_params = DockerRunBuilder(additional_opts=['--entrypoint', ''], command=['sleep', '3600'])
         container = i.run_via_binary(run_params)
@@ -144,9 +147,13 @@ def e2e_case(i, results):
 
 
 def add_result(result, message):
-        results.append({'result': result, 'message': message})
+    results.append({'result': result, 'message': message})
+    if pbar:
+        pbar.update(1)
 
 def print_result(results):
+    if pbar:
+        pbar.close()
     all_ok = all(map(lambda r: r['result'], results))
     if all_ok:
         print('Radley approves!')
