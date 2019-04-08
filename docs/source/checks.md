@@ -1,5 +1,5 @@
 ### Basic Mode
-When running the soit in the basic mode (default) and you image passes the test, you should end-up with following output:
+When running the soit in the basic mode (default) and your image passes the test, you should end-up with following output:
 
 ```console
 [ ✓ ] ... File /launch.sh should be present on the image
